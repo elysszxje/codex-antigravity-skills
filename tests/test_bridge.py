@@ -127,13 +127,13 @@ class MockSubprocess:
 class TestBridge(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
-        self.workspace1 = self.root / "workspace one with spaces"
+        self.root = Path(self.temp_dir.name).resolve()
+        self.workspace1 = (self.root / "workspace one with spaces").resolve()
         self.workspace1.mkdir(parents=True)
-        self.workspace2 = self.root / "workspace two with spaces"
+        self.workspace2 = (self.root / "workspace two with spaces").resolve()
         self.workspace2.mkdir(parents=True)
 
-        self.state_dir = self.root / "custom_state"
+        self.state_dir = (self.root / "custom_state").resolve()
         self.state_dir.mkdir(parents=True)
 
         self.task_file = self.root / "task.json"
@@ -157,6 +157,11 @@ class TestBridge(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def get_key(self, workspace: Path) -> str:
+        return bridge.hashlib.sha256(
+            os.path.normcase(str(Path(workspace).resolve())).encode("utf-8")
+        ).hexdigest()[:24]
+
     def run_bridge(self, action: str, workspace: Path, *extra_args: str) -> int:
         args = [
             action,
@@ -176,9 +181,7 @@ class TestBridge(unittest.TestCase):
             return bridge.main(args)
 
     def get_state(self, workspace: Path) -> dict:
-        key = bridge.hashlib.sha256(
-            os.path.normcase(str(workspace)).encode("utf-8")
-        ).hexdigest()[:24]
+        key = self.get_key(workspace)
         state_file = self.state_dir / key / "state.json"
         return bridge.read_json(state_file)
 
@@ -213,9 +216,7 @@ class TestBridge(unittest.TestCase):
 
     def test_duplicate_locking_blocks_concurrent_dispatch(self):
         self.run_bridge("dispatch", self.workspace1, "--task-file", str(self.task_file))
-        key = bridge.hashlib.sha256(
-            os.path.normcase(str(self.workspace1)).encode("utf-8")
-        ).hexdigest()[:24]
+        key = self.get_key(self.workspace1)
         lock_file = self.state_dir / key / "active.lock"
         lock_file.write_text("12345", encoding="utf-8")
 
@@ -225,13 +226,11 @@ class TestBridge(unittest.TestCase):
         self.assertTrue(lock_file.exists())
 
     def test_lock_race_detects_updated_state_after_lock_acquired(self):
-        key = bridge.hashlib.sha256(
-            os.path.normcase(str(self.workspace1)).encode("utf-8")
-        ).hexdigest()[:24]
+        key = self.get_key(self.workspace1)
         folder = self.state_dir / key
         folder.mkdir(parents=True, exist_ok=True)
         state_file = folder / "state.json"
-        state_file.write_text(json.dumps({"workspace": str(self.workspace1), "status": "idle"}), encoding="utf-8")
+        state_file.write_text(json.dumps({"workspace": str(Path(self.workspace1).resolve()), "status": "idle"}), encoding="utf-8")
 
         real_open = Path.open
 
@@ -240,7 +239,7 @@ class TestBridge(unittest.TestCase):
             if path_obj.name == "active.lock" and "x" in mode:
                 state_file.write_text(
                     json.dumps({
-                        "workspace": str(self.workspace1),
+                        "workspace": str(Path(self.workspace1).resolve()),
                         "status": "awaiting_review",
                         "task_id": "concurrent-uuid",
                     }),
@@ -408,9 +407,7 @@ class TestBridge(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.run_bridge("retry", self.workspace1, "--feedback-file", str(self.feedback_file))
 
-        key = bridge.hashlib.sha256(
-            os.path.normcase(str(self.workspace1)).encode("utf-8")
-        ).hexdigest()[:24]
+        key = self.get_key(self.workspace1)
         state_file = self.state_dir / key / "state.json"
         state = self.get_state(self.workspace1)
         state.update(status="failed", conversation_id=None)
@@ -427,9 +424,7 @@ class TestBridge(unittest.TestCase):
         state = self.get_state(self.workspace1)
         self.assertEqual(state["status"], "interrupted")
         self.assertNotIn("pid", state)
-        key = bridge.hashlib.sha256(
-            os.path.normcase(str(self.workspace1)).encode("utf-8")
-        ).hexdigest()[:24]
+        key = self.get_key(self.workspace1)
         lock_file = self.state_dir / key / "active.lock"
         self.assertFalse(lock_file.exists())
 
@@ -443,9 +438,7 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(state["status"], "interrupted")
         self.assertNotIn("pid", state)
 
-        key = bridge.hashlib.sha256(
-            os.path.normcase(str(self.workspace1)).encode("utf-8")
-        ).hexdigest()[:24]
+        key = self.get_key(self.workspace1)
         lock_file = self.state_dir / key / "active.lock"
         self.assertFalse(lock_file.exists())
 
@@ -462,9 +455,7 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(state["pid"], 99999)
 
         # Lock must be retained on disk because worker PID could not be confirmed stopped!
-        key = bridge.hashlib.sha256(
-            os.path.normcase(str(self.workspace1)).encode("utf-8")
-        ).hexdigest()[:24]
+        key = self.get_key(self.workspace1)
         lock_file = self.state_dir / key / "active.lock"
         self.assertTrue(lock_file.exists())
 
@@ -479,10 +470,10 @@ class TestSubprocessHermetic(unittest.TestCase):
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
-        self.workspace = self.root / "hermetic_ws"
+        self.root = Path(self.temp_dir.name).resolve()
+        self.workspace = (self.root / "hermetic_ws").resolve()
         self.workspace.mkdir(parents=True)
-        self.state_dir = self.root / "hermetic_state"
+        self.state_dir = (self.root / "hermetic_state").resolve()
         self.state_dir.mkdir(parents=True)
         self.real_popen = subprocess.Popen
 
@@ -601,9 +592,9 @@ class TestSubprocessHermetic(unittest.TestCase):
             self.assertIsNotNone(proc.poll())
 
         key = bridge.hashlib.sha256(
-            os.path.normcase(str(self.workspace)).encode("utf-8")
+            os.path.normcase(str(Path(self.workspace).resolve())).encode("utf-8")
         ).hexdigest()[:24]
-        state_file = self.state_dir / key / "state.json"
+        state_file = Path(self.state_dir).resolve() / key / "state.json"
         state = bridge.read_json(state_file)
         self.assertNotIn("pid", state)
         self.assertFalse((self.state_dir / key / "active.lock").exists())

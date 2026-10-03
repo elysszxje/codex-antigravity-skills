@@ -16,7 +16,7 @@ import scripts.install as installer
 class TestInstaller(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.home = Path(self.temp_dir.name)
+        self.home = Path(self.temp_dir.name).resolve()
         self.codex_home = self.home / ".codex"
         self.codex_home.mkdir(parents=True)
         self.runtime_dir = self.home / ".gemini" / "antigravity-cli" / "codex-bridge"
