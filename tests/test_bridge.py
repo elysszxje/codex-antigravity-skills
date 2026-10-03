@@ -570,6 +570,8 @@ class TestSubprocessHermetic(unittest.TestCase):
             str(task_file),
             "--state-dir",
             str(self.state_dir),
+            "--agy-executable",
+            sys.executable,
             "--timeout",
             "1",
         ]
@@ -625,6 +627,8 @@ class TestSubprocessHermetic(unittest.TestCase):
             str(task_file),
             "--state-dir",
             str(self.state_dir),
+            "--agy-executable",
+            sys.executable,
         ]
 
         def fake_popen(cmd_args, **kwargs):
