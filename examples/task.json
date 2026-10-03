@@ -1,0 +1,19 @@
+{
+  "objective": "Implement an exponential backoff retry helper in utils/retry.py with unit tests",
+  "scope": [
+    "src/utils/retry.py",
+    "tests/test_retry.py"
+  ],
+  "acceptance_checks": [
+    "retry decorator retries on specified transient exceptions",
+    "jitter is applied to sleep durations",
+    "python -m unittest discover -s tests -v passes with 100% test success"
+  ],
+  "commands": [
+    "python -m unittest discover -s tests -v"
+  ],
+  "decisions": [
+    "Use standard library time and random modules only",
+    "Default max_attempts to 3 and initial_delay to 0.5s"
+  ]
+}
